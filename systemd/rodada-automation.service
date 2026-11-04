@@ -1,0 +1,9 @@
+[Unit]
+Description=Registrar jogos diarios da conta de teste no Rodada
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/rodada-automation/env
+ExecStart=/usr/bin/env node %h/rodada-automation/src/run.mjs

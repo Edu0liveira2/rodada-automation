@@ -1,0 +1,12 @@
+{
+  "name": "rodada-automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "check": "node src/run.mjs --check",
+    "run": "node src/run.mjs",
+    "test": "node --test"
+  }
+}

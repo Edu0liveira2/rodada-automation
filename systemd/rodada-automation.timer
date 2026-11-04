@@ -1,0 +1,11 @@
+[Unit]
+Description=Executar Rodada automation diariamente as 00:01 de Brasilia
+
+[Timer]
+OnCalendar=*-*-* 00:01:00 America/Sao_Paulo
+AccuracySec=1s
+Persistent=true
+Unit=rodada-automation.service
+
+[Install]
+WantedBy=timers.target
