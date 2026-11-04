@@ -1,43 +1,50 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { configFromEnv, dateKeyInBrasilia, run, validateReceipt } from "../src/run.mjs";
+import { configFromEnv, dateKeyInBrasilia, run } from "../src/run.mjs";
 
-const secret = "x".repeat(32);
-const slugs = [
-  "palavra", "dupla", "quadra", "bandeira", "pais", "capital", "mosaico", "rota",
-  "calor", "mundo", "elo", "sentido", "colmeia", "rainhas", "rainhas-9", "rainhas-10",
-];
+const slugs = ["palavra", "dupla", "quadra", "bandeira", "pais", "capital", "mosaico", "rota", "calor", "mundo", "elo", "sentido", "colmeia", "rainhas", "rainhas-9", "rainhas-10"];
+const env = { RODADA_COOKIE: "better-auth.session_token=token-de-teste", RODADA_EXPECTED_EMAIL: "teste@example.com" };
+const now = new Date("2026-11-05T03:01:00Z");
 
-test("usa a data de Brasilia mesmo perto da virada UTC", () => {
+test("usa a data de Brasília na virada UTC", () => {
   assert.equal(dateKeyInBrasilia(new Date("2026-11-05T02:01:00Z")), "2026-11-04");
-  assert.equal(dateKeyInBrasilia(new Date("2026-11-05T03:01:00Z")), "2026-11-05");
+  assert.equal(dateKeyInBrasilia(now), "2026-11-05");
 });
 
-test("recusa segredo curto e URL sem HTTPS", () => {
-  assert.throws(() => configFromEnv({ RODADA_AUTOMATION_SECRET: "short" }), /32 caracteres/);
-  assert.throws(() => configFromEnv({ RODADA_AUTOMATION_SECRET: secret, RODADA_AUTOMATION_URL: "http://rodada.io/api/automation/daily" }), /HTTPS/);
+test("exige cookie e URL HTTPS", () => {
+  assert.throws(() => configFromEnv({}), /RODADA_COOKIE/);
+  assert.throws(() => configFromEnv({ ...env, RODADA_BASE_URL: "http://rodada.io" }), /HTTPS/);
 });
 
-test("envia uma chamada para o dia, autentica e exige os 16 resultados", async () => {
-  const now = new Date("2026-11-05T03:01:00Z");
-  let calls = 0;
-  const result = await run({
-    env: { RODADA_AUTOMATION_SECRET: secret, RODADA_AUTOMATION_URL: "https://rodada.io/api/automation/daily" },
-    now,
-    fetcher: async (url, options) => {
-      calls++;
-      assert.equal(url, "https://rodada.io/api/automation/daily");
-      assert.equal(options.headers.Authorization, `Bearer ${secret}`);
-      assert.equal(options.headers["Idempotency-Key"], "rodada-2026-11-05");
-      assert.deepEqual(JSON.parse(options.body), { dateKey: "2026-11-05" });
-      return Response.json({ dateKey: "2026-11-05", results: slugs.map((slug) => ({ slug, state: "created" })) });
-    },
-  });
-  assert.equal(calls, 1);
+test("joga os 16 pela API pública usando a sessão existente", async () => {
+  const calls = [];
+  const result = await run({ env, now, solver: async () => Object.fromEntries(slugs.map((slug) => [slug, ["resposta"]])), fetcher: async (url, options) => {
+    const path = new URL(url).pathname;
+    calls.push({ path, options });
+    if (path === "/api/me") return Response.json({ email: "teste@example.com", records: [] });
+    const body = JSON.parse(options.body);
+    if (path === "/api/plays/start") return Response.json({ startedAt: new Date().toISOString() });
+    return Response.json({ play: { slug: body.slug, dateKey: body.dateKey, status: "won" } });
+  } });
   assert.deepEqual(result, { dateKey: "2026-11-05", created: 16, existing: 0 });
+  assert.equal(calls.filter((call) => call.path === "/api/plays").length, 16);
+  assert.equal(calls.filter((call) => call.path === "/api/plays/start").length, 1);
+  assert.ok(calls.every((call) => call.options.headers.Cookie === env.RODADA_COOKIE));
 });
 
-test("nao relata sucesso se um jogo falhar ou faltar", () => {
-  assert.throws(() => validateReceipt({ dateKey: "2026-11-05", results: slugs.slice(1).map((slug) => ({ slug, state: "created" })) }, "2026-11-05"), /incompleta/);
-  assert.throws(() => validateReceipt({ dateKey: "2026-11-05", results: slugs.map((slug) => ({ slug, state: "failed" })) }, "2026-11-05"), /Resultado invalido|Resultado inválido/);
+test("não envia partidas se o cookie for de outra conta", async () => {
+  await assert.rejects(run({ env, now, solver: async () => { throw new Error("não deveria calcular"); }, fetcher: async () => Response.json({ email: "outro@example.com", records: [] }) }), /outra conta/);
+});
+
+test("para ao receber uma derrota", async () => {
+  let sent = 0;
+  await assert.rejects(run({ env, now, solver: async () => Object.fromEntries(slugs.map((slug) => [slug, ["resposta"]])), fetcher: async (url, options) => {
+    const path = new URL(url).pathname;
+    if (path === "/api/me") return Response.json({ email: "teste@example.com", records: [] });
+    if (path === "/api/plays/start") return Response.json({ startedAt: new Date().toISOString() });
+    sent++;
+    const body = JSON.parse(options.body);
+    return Response.json({ play: { slug: body.slug, dateKey: body.dateKey, status: "lost" } });
+  } }), /não foi vencida/);
+  assert.equal(sent, 1);
 });

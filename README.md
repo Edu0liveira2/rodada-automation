@@ -1,33 +1,29 @@
 # rodada-automation
 
-Agendador sem navegador para uma conta de teste do [Rodada](https://rodada.io). Um PC Linux ligado faz uma chamada autenticada às 00:01 em `America/Sao_Paulo`. O servidor Rodada calcula e registra as partidas usando suas próprias engines. Não é necessário entrar com o Google a cada execução.
+Cliente **externo** para jogar diariamente os 16 jogos de [rodada.io](https://rodada.io) com uma conta de teste. Ele roda em outro PC Linux, calcula as respostas localmente e usa as rotas públicas já existentes (`/api/me`, `/api/plays/start` e `/api/plays`). Não precisa instalar navegador nem alterar o servidor Rodada.
 
-## Estado do projeto
+O cálculo usa a seed `rodada-dev` e os dados públicos do commit que funcionou no teste manual. Se o deploy mudar a seed, as listas ou as regras, atualize a configuração ou o cálculo antes da próxima execução. O programa para ao encontrar uma partida não vencida.
 
-Este repositório contém o **cliente agendado**, sua validação e o timer do systemd. A rota `POST /api/automation/daily` **ainda não existe** no Rodada. Antes de ativar o timer, é preciso implementá-la e publicá-la no projeto do site. O cliente falha se a resposta não confirmar os 16 jogos.
+## Autenticação
 
-Contrato esperado da rota:
+O Rodada exige uma sessão válida. Faça login **uma vez** na conta de teste pelo navegador e copie o cookie `better-auth.session_token` (ou `__Secure-better-auth.session_token`) em DevTools → Application → Cookies → `https://rodada.io`. No PC da automação, guarde o nome e o valor no arquivo `~/.config/rodada-automation/env`, no formato mostrado em `.env.example`. Configure também `RODADA_EXPECTED_EMAIL` para impedir que um cookie de outra conta seja usado por engano.
 
-- Recebe `Authorization: Bearer <RODADA_AUTOMATION_SECRET>` e `{ "dateKey": "AAAA-MM-DD" }`.
-- Usa um **ID de conta fixo em variável de ambiente no deploy**. Nunca aceita `accountId` do pedido.
-- Confere que `dateKey` é o dia atual em Brasília e calcula as respostas no servidor com a seed e os dados do próprio deploy.
-- Registra cada partida de modo idempotente. Uma nova chamada no mesmo dia devolve `existing` para as partidas já gravadas.
-- Responde `{"dateKey":"AAAA-MM-DD","results":[{"slug":"palavra","state":"created"}, ...]}` com os 16 slugs e `state` igual a `created` ou `existing`.
+O ID público da conta não autentica ninguém. O cookie é uma credencial: não o publique, não cole em issues e mantenha o arquivo com permissão `600`. A sessão pode expirar ou ser revogada; nesse caso, o programa encerra com erro 401 e será preciso renovar o cookie. Não há login diário com Google enquanto a sessão permanecer válida.
 
-O ID da conta não é credencial. O segredo compartilhado autoriza a chamada; mantenha-o apenas nas variáveis do deploy e no arquivo de ambiente do PC. Não grave cookies, senha ou tokens do Google neste projeto.
+## Instalação no outro PC
 
-## Preparar o PC
-
-Requer Node.js 20+ e Linux com systemd. Clone o repositório em `~/rodada-automation` e execute:
+Requer Node.js 20+, Linux com systemd, `gh` autenticado na sua conta GitHub e acesso a `rodada.io` e `raw.githubusercontent.com`. O repositório é privado.
 
 ```bash
+gh repo clone Edu0liveira2/rodada-automation ~/rodada-automation
+cd ~/rodada-automation
 mkdir -p ~/.config/rodada-automation ~/.config/systemd/user
 cp .env.example ~/.config/rodada-automation/env
 chmod 600 ~/.config/rodada-automation/env
 cp systemd/rodada-automation.service systemd/rodada-automation.timer ~/.config/systemd/user/
 ```
 
-Edite `~/.config/rodada-automation/env` com o **mesmo** segredo configurado na Vercel. Gere um segredo com `openssl rand -hex 32`. Configure a rota no site antes de ativar o timer.
+Edite `~/.config/rodada-automation/env` e substitua o cookie e o e-mail de exemplo. Depois valide a configuração e faça uma execução manual:
 
 ```bash
 set -a
@@ -35,22 +31,18 @@ set -a
 set +a
 npm run check
 npm test
+npm run run
+```
+
+Se essa execução terminar com `created + existing = 16`, ative o agendamento:
+
+```bash
 systemd-analyze calendar '*-*-* 00:01:00 America/Sao_Paulo'
 systemctl --user daemon-reload
 systemctl --user enable --now rodada-automation.timer
 systemctl --user list-timers rodada-automation.timer
 ```
 
-Para que um timer de usuário continue ativo sem login no PC, habilite linger uma vez com `sudo loginctl enable-linger "$USER"`. O PC precisa permanecer ligado e com internet. `Persistent=true` faz uma execução de recuperação quando o PC voltar após perder o horário; o servidor deve garantir que repetir o mesmo dia não duplique partidas.
+Para manter o timer de usuário ativo sem login, execute uma vez `sudo loginctl enable-linger "$USER"`. O PC deve permanecer ligado e conectado à internet. `Persistent=true` executa a tarefa ao voltar de uma queda após o horário. Partidas já registradas são ignoradas.
 
-Para executar manualmente após a rota estar publicada:
-
-```bash
-set -a
-. ~/.config/rodada-automation/env
-set +a
-npm run run
-journalctl --user -u rodada-automation.service -n 50 --no-pager
-```
-
-O programa não imprime o segredo. Ele encerra com código diferente de zero se a chamada falhar ou se algum dos 16 resultados estiver ausente.
+Consulte a última execução com `journalctl --user -u rodada-automation.service -n 50 --no-pager`. O programa imprime apenas a data e a contagem de partidas criadas ou já existentes; não imprime o cookie.
