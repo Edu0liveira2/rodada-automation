@@ -13,6 +13,7 @@ test("usa a data de Brasília na virada UTC", () => {
 
 test("exige cookie e URL HTTPS", () => {
   assert.throws(() => configFromEnv({}), /RODADA_COOKIE/);
+  assert.throws(() => configFromEnv({ ...env, RODADA_COOKIE: "better-auth.session_token=abc…xyz" }), /caractere inválido/);
   assert.throws(() => configFromEnv({ ...env, RODADA_BASE_URL: "http://rodada.io" }), /HTTPS/);
 });
 

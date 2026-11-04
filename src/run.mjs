@@ -18,6 +18,9 @@ export function configFromEnv(env = process.env) {
   if (!cookie || !/(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=/.test(cookie) || /[\r\n]/.test(cookie)) {
     throw new Error("Configure RODADA_COOKIE com o cookie de sessão da sua conta de teste");
   }
+  if (/[^\x00-\xFF]/.test(cookie)) {
+    throw new Error("RODADA_COOKIE contém um caractere inválido (por exemplo, …). Copie o valor completo do cookie, sem abreviações");
+  }
   const base = env.RODADA_BASE_URL || "https://rodada.io";
   let url;
   try { url = new URL(base); } catch { throw new Error("RODADA_BASE_URL inválida"); }
