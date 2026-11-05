@@ -2,6 +2,8 @@
 
 Cliente **externo** para jogar diariamente os 16 jogos de [rodada.io](https://rodada.io) com uma conta de teste. Ele roda em outro PC Linux, calcula as respostas localmente e usa as rotas públicas já existentes (`/api/me`, `/api/plays/start` e `/api/plays`). Não precisa instalar navegador nem alterar o servidor Rodada.
 
+O script manual original para colar no Console do navegador está em [`devtools/rodada-audit.js`](devtools/rodada-audit.js). Ele usa a sessão já aberta no navegador e pede confirmação antes de enviar as partidas do dia.
+
 O cálculo usa a seed `rodada-dev` e os dados públicos do commit que funcionou no teste manual. Se o deploy mudar a seed, as listas ou as regras, atualize a configuração ou o cálculo antes da próxima execução. O programa para ao encontrar uma partida não vencida.
 
 ## Autenticação
