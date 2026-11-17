@@ -1,10 +1,22 @@
 # rodada-automation
 
-Cliente **externo** para jogar diariamente os 16 jogos de [rodada.io](https://rodada.io) com uma conta de teste. Ele roda em outro PC Linux, calcula as respostas localmente e usa as rotas públicas já existentes (`/api/me`, `/api/plays/start` e `/api/plays`). Não precisa instalar navegador nem alterar o servidor Rodada.
+Cliente **externo** para jogar diariamente os 21 jogos de [rodada.io](https://rodada.io) com uma conta de teste. Ele roda em outro PC Linux, calcula as respostas localmente e usa as rotas públicas já existentes (`/api/me`, `/api/plays/start` e `/api/plays`). Não precisa instalar navegador nem alterar o servidor Rodada.
 
 O script manual original para colar no Console do navegador está em [`devtools/rodada-audit.js`](devtools/rodada-audit.js). Ele usa a sessão já aberta no navegador e pede confirmação antes de enviar as partidas do dia.
 
-O cálculo usa a seed `rodada-dev` e os dados públicos do commit que funcionou no teste manual. Se o deploy mudar a seed, as listas ou as regras, atualize a configuração ou o cálculo antes da próxima execução. O programa para ao encontrar uma partida não vencida.
+## Atualizar uma instalação anterior
+
+Se o timer já está instalado no outro PC, atualize o código e o commit dos dados no arquivo de ambiente. Mantenha o cookie e o e-mail existentes:
+
+```bash
+cd ~/rodada-automation
+git pull
+nano ~/.config/rodada-automation/env
+```
+
+Defina `RODADA_SOURCE_REF=445bb012ce63af3821d5e8117dbf1b8a552f69f7`, salve o arquivo e execute `systemctl --user start rodada-automation.service`. O timer já instalado usará o código novo na próxima execução; confira o resultado com `journalctl --user -u rodada-automation.service -n 50 --no-pager`.
+
+O cálculo usa a seed `rodada-dev` e os dados públicos do commit `445bb012ce63af3821d5e8117dbf1b8a552f69f7`. Se o deploy mudar a seed, as listas ou as regras, atualize a configuração ou o cálculo antes da próxima execução. O programa para ao encontrar uma partida não vencida. Escala e Escala Países terminam com `done` e só passam na validação se a nota for 100.
 
 ## Autenticação
 
@@ -36,7 +48,7 @@ npm test
 npm run run
 ```
 
-Se essa execução terminar com `created + existing = 16`, ative o agendamento:
+Se essa execução terminar com `created + existing = 21`, ative o agendamento:
 
 ```bash
 systemd-analyze calendar '*-*-* 00:01:00 America/Sao_Paulo'

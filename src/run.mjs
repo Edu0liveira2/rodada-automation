@@ -1,10 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { solve } from "./solve.mjs";
-
-const EXPECTED_SLUGS = [
-  "palavra", "dupla", "quadra", "bandeira", "pais", "capital", "mosaico", "rota",
-  "calor", "mundo", "elo", "sentido", "colmeia", "rainhas", "rainhas-9", "rainhas-10",
-];
+import { GAME_SLUGS, solve } from "./solve.mjs";
 
 export function dateKeyInBrasilia(now = new Date()) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
@@ -28,8 +23,11 @@ export function configFromEnv(env = process.env) {
   if ((url.protocol !== "https:" && !(local && url.protocol === "http:")) || url.username || url.password || url.search || url.hash || url.pathname !== "/") {
     throw new Error("RODADA_BASE_URL deve ser a origem HTTPS do site, sem caminho ou parâmetros");
   }
-  const sourceRef = env.RODADA_SOURCE_REF || "db4239a0aa42a8c4a65c47c7eaf2f68cce17217d";
+  const sourceRef = env.RODADA_SOURCE_REF || "445bb012ce63af3821d5e8117dbf1b8a552f69f7";
   if (!/^[a-f0-9]{40}$/.test(sourceRef)) throw new Error("RODADA_SOURCE_REF deve ser um commit SHA de 40 caracteres");
+  if (sourceRef === "db4239a0aa42a8c4a65c47c7eaf2f68cce17217d") {
+    throw new Error("RODADA_SOURCE_REF antigo: use 445bb012ce63af3821d5e8117dbf1b8a552f69f7 para os 21 jogos");
+  }
   return { cookie, base: url.origin, seed: env.RODADA_SEED || "rodada-dev", sourceRef, expectedEmail: env.RODADA_EXPECTED_EMAIL };
 }
 
@@ -52,22 +50,24 @@ export async function run({ env = process.env, fetcher = fetch, solver = solve, 
   if (!me || !Array.isArray(me.records)) throw new Error("/api/me não retornou a lista de partidas");
   if (expectedEmail && me.email?.toLowerCase() !== expectedEmail.toLowerCase()) throw new Error("Cookie pertence a outra conta");
   const played = new Set(me.records.filter((record) => record.dateKey === dateKey).map((record) => record.slug));
-  if (EXPECTED_SLUGS.every((slug) => played.has(slug))) return { dateKey, created: 0, existing: 16 };
+  if (GAME_SLUGS.every((slug) => played.has(slug))) return { dateKey, created: 0, existing: GAME_SLUGS.length };
 
   const guesses = await solver({ dateKey, seed, sourceRef, fetcher });
-  if (Object.keys(guesses).length !== 16 || EXPECTED_SLUGS.some((slug) => !Array.isArray(guesses[slug]))) {
-    throw new Error("O cálculo não retornou os 16 jogos");
+  if (Object.keys(guesses).length !== GAME_SLUGS.length || GAME_SLUGS.some((slug) => !Array.isArray(guesses[slug]))) {
+    throw new Error(`O cálculo não retornou os ${GAME_SLUGS.length} jogos`);
   }
   const results = [];
-  for (const slug of EXPECTED_SLUGS) {
+  for (const slug of GAME_SLUGS) {
     if (played.has(slug)) { results.push({ slug, state: "existing" }); continue; }
     if (slug === "mundo") {
       const started = await request("/api/plays/start", { slug, dateKey });
       if (!started?.startedAt || Date.now() - new Date(started.startedAt).getTime() > 15 * 60_000) throw new Error("Relógio do Mundo não iniciou corretamente");
     }
     const receipt = await request("/api/plays", { slug, dateKey, guesses: guesses[slug] });
-    if (receipt?.play?.slug !== slug || receipt.play.dateKey !== dateKey || receipt.play.status !== "won") {
-      throw new Error(`${slug}: partida não foi vencida; confira seed e versão dos dados`);
+    const expectedStatus = slug === "escala" || slug === "escala-paises" ? "done" : "won";
+    if (receipt?.play?.slug !== slug || receipt.play.dateKey !== dateKey || receipt.play.status !== expectedStatus ||
+      (expectedStatus === "done" && receipt.play.nota !== 100)) {
+      throw new Error(`${slug}: resultado inesperado; confira seed e versão dos dados`);
     }
     results.push({ slug, state: "created" });
   }
